@@ -1,0 +1,46 @@
+id,nombre,linea,zona,capacidad
+L1-01,Propatria,L1,Catia,3000
+L1-02,Pérez Bonalde,L1,Catia,3037
+L1-03,Plaza Sucre,L1,Catia,3074
+L1-04,Gato Negro,L1,Catia,3111
+L1-05,Agua Salud,L1,Catia,3148
+L1-06,Caño Amarillo,L1,Catia,3185
+L1-07,Capitolio,L1,Centro,3222
+L1-08,La Hoyada,L1,Centro,3259
+L1-09,Parque Carabobo,L1,Centro,3296
+L1-10,Bellas Artes,L1,Centro,3333
+L1-11,Colegio de Ingenieros,L1,Centro,3370
+L1-12,Plaza Venezuela,L1,Centro,3407
+L1-13,Sabana Grande,L1,Sabana Grande,3444
+L1-14,Chacaíto,L1,Sabana Grande,3481
+L1-15,Chacao,L1,Sabana Grande,3518
+L1-16,Altamira,L1,Chacao,3555
+L1-17,Miranda,L1,Chacao,3592
+L1-18,Los Cortijos,L1,Chacao,3629
+L1-19,La California,L1,Sucre,3666
+L1-20,Petare,L1,Sucre,3703
+L1-21,Palo Verde,L1,Sucre,3740
+L2-01,El Silencio,L2,Centro,2200
+L2-02,Capuchinos,L2,Centro,2237
+L2-03,Maternidad,L2,Centro,2274
+L2-04,Artigas,L2,Catia,2311
+L2-05,La Paz,L2,El Paraíso,2348
+L2-06,La Yaguara,L2,El Paraíso,2385
+L2-07,Carapita,L2,El Paraíso,2422
+L2-08,Antímano,L2,Antímano,2459
+L2-09,Mamera,L2,Antímano,2496
+L2-10,Ruiz Pineda,L2,Antímano,2533
+L2-11,Las Adjuntas,L2,Antímano,2570
+L3-01,Plaza Venezuela L3,L3,Libertador,2000
+L3-02,Ciudad Universitaria,L3,Libertador,2037
+L3-03,Los Símbolos,L3,Libertador,2074
+L3-04,La Bandera,L3,Libertador,2111
+L3-05,El Valle,L3,Libertador,2148
+L3-06,Los Jardines,L3,Libertador,2185
+L3-07,Coche,L3,Libertador,2222
+L3-08,Mercado,L3,Libertador,2259
+L3-09,La Rinconada,L3,Libertador,2296
+ZO-01,Zoológico,L2,El Paraíso,1200
+L1-90,Los Dos Caminos,L1,Sucre,2500
+L2-90,Capitolio L2,L2,Centro,1800
+CSB-01,Centro Simón Bolívar,,Centro,900

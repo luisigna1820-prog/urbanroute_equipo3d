@@ -37,6 +37,12 @@ src/main/java/urbanroute/
 data/              diccionario.csv y grafo.csv (archivo maestro)
 ```
 
+## Diagrama de clases
+
+![Diagrama de clases](docs/diagrama_clases.png)
+
+El código fuente del diagrama (Mermaid) está en `docs/diagrama_clases.mmd`.
+
 ## Cómo ejecutar
 
 * **NetBeans / IntelliJ:** abrir la carpeta como proyecto Maven y ejecutar `urbanroute.Main`.

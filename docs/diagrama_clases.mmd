@@ -1,0 +1,159 @@
+classDiagram
+    direction TB
+
+    %% ===== Estructuras propias =====
+    class Nodo~T~ {
+        -T dato
+        -Nodo~T~ siguiente
+        +getDato() T
+        +getSiguiente() Nodo~T~
+        +setSiguiente(Nodo~T~ n)
+    }
+    class ListaEnlazada~T~ {
+        -Nodo~T~ primero
+        -Nodo~T~ ultimo
+        -int tamano
+        +agregar(T dato)
+        +agregarAlInicio(T dato)
+        +eliminar(T dato) boolean
+        +contiene(T dato) boolean
+        +obtener(int pos) T
+        +vaciar()
+        +getTamano() int
+        +getPrimero() Nodo~T~
+    }
+    class Cola~T~ {
+        -Nodo~T~ frente
+        -Nodo~T~ fin
+        +encolar(T dato)
+        +desencolar() T
+        +estaVacia() boolean
+    }
+    class TablaHash~V~ {
+        -Entrada~V~[] casillas
+        -int tamano
+        +insertar(String clave, V valor) boolean
+        +buscar(String clave) V
+        +eliminar(String clave) V
+        +contiene(String clave) boolean
+        +vaciar()
+        +valores() ListaEnlazada~V~
+        -indice(String clave, int cap) int
+        -redimensionar()
+    }
+
+    %% ===== Entidades =====
+    class Estacion {
+        -String id
+        -String nombre
+        -String linea
+        -String zona
+        -int capacidad
+        -ListaEnlazada~Conexion~ conexiones
+        +getId() String
+        +getNombre() String
+        +getLinea() String
+        +getGrado() int
+        +getInformacion() String
+    }
+    class Conexion {
+        -Estacion destino
+        -double tiempo
+        +getDestino() Estacion
+        +getTiempo() double
+    }
+    class Grafo {
+        -TablaHash~Estacion~ tabla
+        -ListaEnlazada~Estacion~ estaciones
+        -int numConexiones
+        +agregarEstacion(Estacion e) boolean
+        +eliminarEstacion(String id) Estacion
+        +buscarEstacion(String id) Estacion
+        +agregarConexion(String a, String b, double t) boolean
+        +eliminarConexion(String a, String b) boolean
+        +getVecinos(String id) ListaEnlazada~Conexion~
+        +getEstaciones() ListaEnlazada~Estacion~
+        +vaciar()
+    }
+
+    %% ===== Control =====
+    class GestorArchivo {
+        -File archivoDiccionario
+        -File archivoGrafo
+        -ListaEnlazada~String~ advertencias
+        +cargar(File dic, File grafo) Grafo
+        +cargarMaestro(File carpeta) Grafo
+        +guardar(Grafo g)
+        +getAdvertencias() ListaEnlazada~String~
+    }
+    class AnalizadorRed {
+        -Grafo grafo
+        +encontrarSubredes() ListaEnlazada~ListaEnlazada~Estacion~~
+        +numeroDeSubred() TablaHash~Integer~
+        +contarConexiones(String id) int
+        +identificarHubs(int n) Estacion[]
+        -bfs(Estacion inicio, TablaHash~Boolean~ visitado)
+    }
+    class CalculadorRutas {
+        -Grafo grafo
+        +calcularRuta(String origen, String destino) Ruta
+        +describir(Ruta r, String origen, String destino) String
+    }
+    class Ruta {
+        -ListaEnlazada~Estacion~ recorrido
+        -double tiempoTotal
+        +existe() boolean
+        +getRecorrido() ListaEnlazada~Estacion~
+        +getTiempoTotal() double
+    }
+
+    %% ===== Frontera =====
+    class VentanaPrincipal {
+        -Grafo grafo
+        -GestorArchivo gestor
+        -AnalizadorRed analizador
+        -CalculadorRutas calculador
+        -VisualizadorGrafo visualizador
+        -cargarArchivo()
+        -guardar()
+        -agregarEstacion()
+        -eliminarEstacion()
+        -agregarConexion()
+        -eliminarConexion()
+        -calcularRuta()
+        -mostrarSubredes()
+        -mostrarHubs()
+        -mostrarAyuda()
+    }
+    class VisualizadorGrafo {
+        -Grafo grafo
+        -TablaHash~double[]~ posiciones
+        -ModoColor modo
+        +setGrafo(Grafo g)
+        +actualizar(TablaHash~Integer~ subredes)
+        +resaltarRuta(ListaEnlazada~Estacion~ ruta)
+        +resaltarHubs(Estacion[] hubs)
+        #paintComponent(Graphics g)
+    }
+    class Main {
+        +main(String[] args)$
+    }
+
+    %% ===== Relaciones =====
+    ListaEnlazada~T~ o-- Nodo~T~
+    Cola~T~ o-- Nodo~T~
+    Grafo *-- TablaHash~V~ : busca estaciones
+    Grafo o-- "0..*" Estacion
+    Estacion o-- "0..*" Conexion : lista de adyacencia
+    Conexion --> Estacion : destino
+    GestorArchivo ..> Grafo : crea y guarda
+    AnalizadorRed --> Grafo
+    AnalizadorRed ..> Cola~T~ : BFS
+    CalculadorRutas --> Grafo
+    CalculadorRutas *-- Ruta : clase interna
+    VentanaPrincipal --> GestorArchivo
+    VentanaPrincipal --> AnalizadorRed
+    VentanaPrincipal --> CalculadorRutas
+    VentanaPrincipal *-- VisualizadorGrafo
+    VisualizadorGrafo --> Grafo
+    Main ..> VentanaPrincipal : crea

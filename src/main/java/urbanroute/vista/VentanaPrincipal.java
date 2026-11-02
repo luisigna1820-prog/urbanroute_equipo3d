@@ -82,7 +82,16 @@ public class VentanaPrincipal extends JFrame {
                 boton("Cargar archivo...", e -> cargarArchivo()),
                 boton("Guardar cambios", e -> guardar())));
         lateral.add(grupo("Estaciones",
+                boton("Agregar estacion", e -> agregarEstacion()),
+                boton("Eliminar estacion", e -> eliminarEstacion()),
                 boton("Ver estacion", e -> verEstacion())));
+        lateral.add(grupo("Conexiones",
+                boton("Agregar conexion", e -> agregarConexion()),
+                boton("Eliminar conexion", e -> eliminarConexion())));
+        lateral.add(grupo("Analisis",
+                boton("Ruta mas rapida", e -> calcularRuta()),
+                boton("Detectar subredes", e -> mostrarSubredes()),
+                boton("Identificar hubs", e -> mostrarHubs())));
 
         JCheckBox chkTiempos = new JCheckBox("Mostrar tiempos");
         chkTiempos.addActionListener(e -> visualizador.setMostrarTiempos(chkTiempos.isSelected()));
@@ -280,8 +289,83 @@ public class VentanaPrincipal extends JFrame {
     }
 
     // ------------------------------------------------------------------
-    // Consulta de estaciones
+    // Altas y bajas (requerimiento B)
     // ------------------------------------------------------------------
+
+    private void agregarEstacion() {
+        JTextField txtId = new JTextField();
+        JTextField txtNombre = new JTextField();
+        JTextField txtLinea = new JTextField();
+        JTextField txtZona = new JTextField();
+        JTextField txtCap = new JTextField("0");
+        JPanel form = formulario(
+                new String[]{"ID *", "Nombre *", "Linea", "Zona", "Capacidad (pasajeros/hora)"},
+                new java.awt.Component[]{txtId, txtNombre, txtLinea, txtZona, txtCap});
+
+        while (true) {
+            if (JOptionPane.showConfirmDialog(this, form, "Agregar estacion", JOptionPane.OK_CANCEL_OPTION,
+                    JOptionPane.PLAIN_MESSAGE) != JOptionPane.OK_OPTION) {
+                return;
+            }
+            String id = txtId.getText().trim();
+            String nombre = txtNombre.getText().trim();
+            if (id.isEmpty() || nombre.isEmpty()) {
+                error("El ID y el nombre son obligatorios.");
+                continue;
+            }
+            if (id.contains(",") || nombre.contains(";")) {
+                error("El ID no puede tener comas y el nombre no puede tener punto y coma.");
+                continue;
+            }
+            if (grafo.existeEstacion(id)) {
+                error("Ya existe una estacion con el ID '" + id + "': " + grafo.buscarEstacion(id));
+                continue;
+            }
+            int capacidad;
+            try {
+                String t = txtCap.getText().trim();
+                capacidad = t.isEmpty() ? 0 : Integer.parseInt(t);
+                if (capacidad < 0) {
+                    throw new NumberFormatException();
+                }
+            } catch (NumberFormatException ex) {
+                error("La capacidad debe ser un numero entero mayor o igual a 0.");
+                continue;
+            }
+            Estacion e = new Estacion(id, nombre, txtLinea.getText(), txtZona.getText(), capacidad);
+            grafo.agregarEstacion(e);
+            redCambiada();
+            mostrar("Estacion agregada:\n" + e.getInformacion()
+                    + "\n\nUse \"Agregar conexion\" para unirla con la red.");
+            return;
+        }
+    }
+
+    private void eliminarEstacion() {
+        if (!hayEstaciones(1)) {
+            return;
+        }
+        JComboBox<Estacion> combo = comboEstaciones();
+        if (JOptionPane.showConfirmDialog(this, combo, "Eliminar estacion", JOptionPane.OK_CANCEL_OPTION,
+                JOptionPane.PLAIN_MESSAGE) != JOptionPane.OK_OPTION) {
+            return;
+        }
+        Estacion e = (Estacion) combo.getSelectedItem();
+        if (e == null || !grafo.existeEstacion(e.getId())) {
+            error("La estacion no existe.");
+            return;
+        }
+        int grado = analizador.contarConexiones(e.getId());
+        int r = JOptionPane.showConfirmDialog(this,
+                "Se eliminara " + e + " y sus " + grado + " conexion(es).\nContinuar?",
+                "Confirmar", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+        if (r != JOptionPane.YES_OPTION) {
+            return;
+        }
+        grafo.eliminarEstacion(e.getId());
+        redCambiada();
+        mostrar("Estacion eliminada: " + e + " (se borraron " + grado + " conexiones).");
+    }
 
     private void verEstacion() {
         if (!hayEstaciones(1)) {
@@ -306,14 +390,223 @@ public class VentanaPrincipal extends JFrame {
         mostrar(sb.toString());
     }
 
+    private void agregarConexion() {
+        if (!hayEstaciones(2)) {
+            return;
+        }
+        JComboBox<Estacion> cOrigen = comboEstaciones();
+        JComboBox<Estacion> cDestino = comboEstaciones();
+        JTextField txtTiempo = new JTextField();
+        JPanel form = formulario(new String[]{"Estacion A", "Estacion B", "Tiempo (minutos) *"},
+                new java.awt.Component[]{cOrigen, cDestino, txtTiempo});
+        while (true) {
+            if (JOptionPane.showConfirmDialog(this, form, "Agregar conexion", JOptionPane.OK_CANCEL_OPTION,
+                    JOptionPane.PLAIN_MESSAGE) != JOptionPane.OK_OPTION) {
+                return;
+            }
+            Estacion a = (Estacion) cOrigen.getSelectedItem();
+            Estacion b = (Estacion) cDestino.getSelectedItem();
+            if (a == null || b == null) {
+                error("Seleccione las dos estaciones.");
+                continue;
+            }
+            if (a.equals(b)) {
+                error("Una estacion no se puede conectar consigo misma.");
+                continue;
+            }
+            if (grafo.existeConexion(a.getId(), b.getId())) {
+                error("Ya existe una conexion entre " + a.getNombre() + " y " + b.getNombre() + ".");
+                continue;
+            }
+            String txt = txtTiempo.getText().trim().replace(",", ".");
+            if (txt.isEmpty()) {
+                error("Escriba el tiempo de traslado.");
+                continue;
+            }
+            double tiempo;
+            try {
+                tiempo = Double.parseDouble(txt);
+            } catch (NumberFormatException ex) {
+                error("El tiempo debe ser un numero (ej: 2 o 2.5).");
+                continue;
+            }
+            if (tiempo <= 0) {
+                error("El tiempo debe ser mayor que 0.");
+                continue;
+            }
+            grafo.agregarConexion(a.getId(), b.getId(), tiempo);
+            redCambiada();
+            mostrar("Conexion agregada: " + a.getNombre() + " <-> " + b.getNombre() + " (" + txt + " min).");
+            return;
+        }
+    }
+
+    private void eliminarConexion() {
+        if (grafo.getNumConexiones() == 0) {
+            aviso("La red no tiene conexiones.");
+            return;
+        }
+        JComboBox<Estacion> cOrigen = comboEstaciones();
+        JComboBox<Estacion> cDestino = new JComboBox<>();
+        Runnable llenarDestinos = () -> {
+            cDestino.removeAllItems();
+            Estacion a = (Estacion) cOrigen.getSelectedItem();
+            if (a != null) {
+                for (Nodo<urbanroute.modelo.Conexion> c = grafo.getVecinos(a.getId()).getPrimero(); c != null; c = c.getSiguiente()) {
+                    cDestino.addItem(c.getDato().getDestino());
+                }
+            }
+        };
+        cOrigen.addActionListener(e -> llenarDestinos.run());
+        llenarDestinos.run();
+        JPanel form = formulario(new String[]{"Estacion A", "Conectada con"},
+                new java.awt.Component[]{cOrigen, cDestino});
+        if (JOptionPane.showConfirmDialog(this, form, "Eliminar conexion", JOptionPane.OK_CANCEL_OPTION,
+                JOptionPane.PLAIN_MESSAGE) != JOptionPane.OK_OPTION) {
+            return;
+        }
+        Estacion a = (Estacion) cOrigen.getSelectedItem();
+        Estacion b = (Estacion) cDestino.getSelectedItem();
+        if (a == null || b == null) {
+            error("La estacion seleccionada no tiene conexiones.");
+            return;
+        }
+        if (grafo.eliminarConexion(a.getId(), b.getId())) {
+            redCambiada();
+            mostrar("Conexion eliminada: " + a.getNombre() + " <-> " + b.getNombre() + ".");
+        } else {
+            error("No existe esa conexion.");
+        }
+    }
+
+    /** Se llama despues de cualquier alta o baja. */
+    private void redCambiada() {
+        hayCambiosSinGuardar = true;
+        visualizador.limpiarResaltado();
+        visualizador.actualizar(analizador.numeroDeSubred());
+        actualizarEstado();
+    }
+
+    // ------------------------------------------------------------------
+    // Analisis (requerimientos E, F y G)
+    // ------------------------------------------------------------------
+
+    private void calcularRuta() {
+        if (!hayEstaciones(2)) {
+            return;
+        }
+        JComboBox<Estacion> cOrigen = comboEstaciones();
+        JComboBox<Estacion> cDestino = comboEstaciones();
+        if (cDestino.getItemCount() > 1) {
+            cDestino.setSelectedIndex(1);
+        }
+        JPanel form = formulario(new String[]{"Desde", "Hasta"}, new java.awt.Component[]{cOrigen, cDestino});
+        if (JOptionPane.showConfirmDialog(this, form, "Ruta mas rapida", JOptionPane.OK_CANCEL_OPTION,
+                JOptionPane.PLAIN_MESSAGE) != JOptionPane.OK_OPTION) {
+            return;
+        }
+        Estacion a = (Estacion) cOrigen.getSelectedItem();
+        Estacion b = (Estacion) cDestino.getSelectedItem();
+        if (a == null || b == null) {
+            error("Seleccione las dos estaciones.");
+            return;
+        }
+        if (a.equals(b)) {
+            error("El origen y el destino son la misma estacion.");
+            return;
+        }
+        try {
+            CalculadorRutas.Ruta ruta = calculador.calcularRuta(a.getId(), b.getId());
+            mostrar(calculador.describir(ruta, a.getId(), b.getId()));
+            if (ruta.existe()) {
+                visualizador.resaltarRuta(ruta.getRecorrido());
+            } else {
+                visualizador.limpiarResaltado();
+                aviso("No hay ruta posible entre " + a.getNombre() + " y " + b.getNombre() + ".");
+            }
+        } catch (IllegalArgumentException ex) {
+            error(ex.getMessage());
+        }
+    }
+
+    private void mostrarSubredes() {
+        if (!hayEstaciones(1)) {
+            return;
+        }
+        ListaEnlazada<ListaEnlazada<Estacion>> subredes = analizador.encontrarSubredes();
+        StringBuilder sb = new StringBuilder();
+        sb.append("Subredes encontradas: ").append(subredes.getTamano()).append("\n");
+        if (subredes.getTamano() == 1) {
+            sb.append("La red esta completamente conectada.\n");
+        }
+        int i = 1;
+        for (Nodo<ListaEnlazada<Estacion>> s = subredes.getPrimero(); s != null; s = s.getSiguiente()) {
+            ListaEnlazada<Estacion> comp = s.getDato();
+            sb.append("\nSubred ").append(i++).append(" (").append(comp.getTamano()).append(" estacion")
+              .append(comp.getTamano() == 1 ? ", aislada" : "es").append("):\n  ");
+            int k = 0;
+            for (Nodo<Estacion> e = comp.getPrimero(); e != null; e = e.getSiguiente()) {
+                sb.append(e.getDato().getNombre());
+                if (e.getSiguiente() != null) {
+                    sb.append(", ");
+                }
+                if (++k % 6 == 0 && e.getSiguiente() != null) {
+                    sb.append("\n  ");
+                }
+            }
+            sb.append('\n');
+        }
+        mostrar(sb.toString());
+        visualizador.setSubredes(analizador.numeroDeSubred());
+        comboColor.setSelectedIndex(1); // colorear por subred
+    }
+
+    private void mostrarHubs() {
+        if (!hayEstaciones(1)) {
+            return;
+        }
+        String txt = JOptionPane.showInputDialog(this, "Cuantos hubs desea ver?", "5");
+        if (txt == null) {
+            return;
+        }
+        int n;
+        try {
+            n = Integer.parseInt(txt.trim());
+            if (n <= 0) {
+                throw new NumberFormatException();
+            }
+        } catch (NumberFormatException ex) {
+            error("Escriba un numero entero mayor que 0.");
+            return;
+        }
+        Estacion[] hubs = analizador.identificarHubs(n);
+        if (hubs.length == 0) {
+            aviso("Ninguna estacion tiene conexiones.");
+            return;
+        }
+        StringBuilder sb = new StringBuilder("Hubs de transferencia (estaciones con mas conexiones):\n\n");
+        for (int i = 0; i < hubs.length; i++) {
+            sb.append(String.format("%2d. %-35s %d conexiones%s%n", i + 1, hubs[i].toString(), hubs[i].getGrado(),
+                    hubs[i].getLinea().isEmpty() ? "" : "   [" + hubs[i].getLinea() + "]"));
+        }
+        if (hubs.length > n) {
+            sb.append("\n(Se muestran ").append(hubs.length).append(" porque hay empate en el ultimo lugar.)");
+        }
+        mostrar(sb.toString());
+        visualizador.resaltarHubs(hubs);
+    }
+
     private void mostrarAyuda() {
         String ayuda = "COMO USAR URBANROUTE\n\n"
                 + "1. Cargar archivo: seleccione diccionario.csv (estaciones). Si grafo.csv (conexiones) esta en\n"
                 + "   la misma carpeta se carga solo; tambien puede seleccionar ambos a la vez.\n"
                 + "   Formato diccionario.csv: id,nombre,linea,zona,capacidad\n"
                 + "   Formato grafo.csv:       origen,destino,tiempo (IDs y minutos)\n"
-                + "2. Ver estacion: muestra los datos de una estacion y sus conexiones.\n"
-                + "\n"
+                + "2. Estaciones / Conexiones: agregue o elimine elementos. Los cambios quedan en memoria\n"
+                + "   hasta que pulse \"Guardar cambios\", que sobrescribe los archivos fuente.\n"
+                + "3. Ruta mas rapida: elija origen y destino; la ruta se resalta en amarillo.\n"
+                + "4. Detectar subredes: lista las partes de la red que no estan conectadas entre si.\n"
+                + "5. Identificar hubs: estaciones con mas conexiones (se resaltan en el dibujo).\n\n"
                 + "En el dibujo: arrastre una estacion para moverla, arrastre el fondo para desplazar,\n"
                 + "use la rueda del raton para hacer zoom y pase el raton sobre una estacion para ver sus datos.";
         mostrar(ayuda);

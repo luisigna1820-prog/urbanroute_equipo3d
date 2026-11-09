@@ -59,12 +59,24 @@ public class VisualizadorGrafo extends JPanel {
     private int ultimoX, ultimoY;
     /** La vista se ajusta en el primer dibujo, cuando ya se conoce el tamano del panel. */
     private boolean vistaPendiente = true;
+    /** Pasa a true cuando el usuario hace zoom o desplaza la vista. */
+    private boolean vistaManual = false;
 
     public VisualizadorGrafo(Grafo grafo) {
         this.grafo = grafo;
         setBackground(Color.WHITE);
         ToolTipManager.sharedInstance().registerComponent(this);
         instalarRaton();
+        // Si cambia el tamano del panel, el dibujo se vuelve a ajustar (salvo que el usuario haya hecho zoom)
+        addComponentListener(new java.awt.event.ComponentAdapter() {
+            @Override
+            public void componentResized(java.awt.event.ComponentEvent e) {
+                if (!vistaManual) {
+                    ajustarVista();
+                    repaint();
+                }
+            }
+        });
     }
 
     // ------------------------------------------------------------------
@@ -102,6 +114,7 @@ public class VisualizadorGrafo extends JPanel {
     /** Recalcula la distribucion completa de la red y ajusta la vista. */
     public void reorganizar() {
         calcularDistribucion();
+        vistaManual = false;
         if (getWidth() > 0) {
             ajustarVista();
         } else {
@@ -147,83 +160,177 @@ public class VisualizadorGrafo extends JPanel {
     }
 
     // ------------------------------------------------------------------
-    // Distribucion (layout por fuerzas)
+    // Distribucion: esquema tipo mapa del Metro
     // ------------------------------------------------------------------
 
+    private static final double SEPARACION_COLUMNAS = 330;
+    /** Estaciones cuyo nombre se escribe a la izquierda (columnas de la izquierda). */
+    private final TablaHash<Boolean> etiquetaIzquierda = new TablaHash<>();
+    private static final double SEPARACION_FILAS = 40;
+
+    /**
+     * Dibuja cada linea como una columna recta, igual que un mapa del Metro.
+     * <ul>
+     *   <li>Las estaciones de cada linea van en el orden de sus conexiones.</li>
+     *   <li>La linea con mas transbordos va en el centro y las demas a los lados.</li>
+     *   <li>Cada columna se sube o baja para que el transbordo quede a la misma
+     *       altura que la estacion con la que conecta (linea horizontal).</li>
+     *   <li>Las estaciones sin conexiones quedan al final de su columna.</li>
+     * </ul>
+     */
     private void calcularDistribucion() {
-        int n = grafo.getNumEstaciones();
-        if (n == 0) {
-            return;
-        }
-        Estacion[] est = new Estacion[n];
-        TablaHash<Integer> idx = new TablaHash<>(n * 2 + 1);
-        int k = 0;
-        for (Nodo<Estacion> e = grafo.getEstaciones().getPrimero(); e != null; e = e.getSiguiente()) {
-            est[k] = e.getDato();
-            idx.insertar(e.getDato().getId(), k);
-            k++;
-        }
-        double ancho = 1000, alto = 700;
-        double area = ancho * alto;
-        double kOpt = Math.sqrt(area / n) * 0.9;
-        double[] x = new double[n], y = new double[n];
-        // Posicion inicial: en circulo (resultado estable y repetible)
-        for (int i = 0; i < n; i++) {
-            double ang = 2 * Math.PI * i / n;
-            x[i] = ancho / 2 + Math.cos(ang) * ancho / 3;
-            y[i] = alto / 2 + Math.sin(ang) * alto / 3;
-        }
-        double temperatura = ancho / 8;
-        int iteraciones = 400;
-        double[] dx = new double[n], dy = new double[n];
-        for (int it = 0; it < iteraciones; it++) {
-            for (int i = 0; i < n; i++) {
-                dx[i] = 0;
-                dy[i] = 0;
-            }
-            // Repulsion entre todos los pares
-            for (int i = 0; i < n; i++) {
-                for (int j = i + 1; j < n; j++) {
-                    double ddx = x[i] - x[j], ddy = y[i] - y[j];
-                    double d = Math.max(0.01, Math.sqrt(ddx * ddx + ddy * ddy));
-                    double f = kOpt * kOpt / d;
-                    dx[i] += ddx / d * f;
-                    dy[i] += ddy / d * f;
-                    dx[j] -= ddx / d * f;
-                    dy[j] -= ddy / d * f;
-                }
-            }
-            // Atraccion en las conexiones
-            for (int i = 0; i < n; i++) {
-                for (Nodo<Conexion> c = grafo.getVecinos(est[i].getId()).getPrimero(); c != null; c = c.getSiguiente()) {
-                    int j = idx.buscar(c.getDato().getDestino().getId());
-                    if (j <= i) {
-                        continue;
-                    }
-                    double ddx = x[i] - x[j], ddy = y[i] - y[j];
-                    double d = Math.max(0.01, Math.sqrt(ddx * ddx + ddy * ddy));
-                    double f = d * d / kOpt;
-                    dx[i] -= ddx / d * f;
-                    dy[i] -= ddy / d * f;
-                    dx[j] += ddx / d * f;
-                    dy[j] += ddy / d * f;
-                }
-            }
-            // Gravedad leve al centro (para que las estaciones sueltas no se alejen)
-            for (int i = 0; i < n; i++) {
-                dx[i] -= (x[i] - ancho / 2) * 0.02 * kOpt / 10;
-                dy[i] -= (y[i] - alto / 2) * 0.02 * kOpt / 10;
-                double d = Math.max(0.01, Math.sqrt(dx[i] * dx[i] + dy[i] * dy[i]));
-                double paso = Math.min(d, temperatura);
-                x[i] += dx[i] / d * paso;
-                y[i] += dy[i] / d * paso;
-            }
-            temperatura *= 0.985;
-        }
         posiciones.vaciar();
-        for (int i = 0; i < n; i++) {
-            posiciones.insertar(est[i].getId(), new double[]{x[i], y[i]});
+        etiquetaIzquierda.vaciar();
+
+        // Lineas existentes, ordenadas de mas a menos transbordos
+        ListaEnlazada<String> lineas = new ListaEnlazada<>();
+        for (Nodo<Estacion> n = grafo.getEstaciones().getPrimero(); n != null; n = n.getSiguiente()) {
+            String l = nombreLinea(n.getDato());
+            if (!lineas.contiene(l)) {
+                lineas.agregar(l);
+            }
         }
+        String[] orden = new String[lineas.getTamano()];
+        int k = 0;
+        for (Nodo<String> l = lineas.getPrimero(); l != null; l = l.getSiguiente()) {
+            orden[k++] = l.getDato();
+        }
+        for (int i = 1; i < orden.length; i++) { // insercion, de mayor a menor
+            String x = orden[i];
+            int j = i - 1;
+            while (j >= 0 && contarTransbordos(orden[j]) < contarTransbordos(x)) {
+                orden[j + 1] = orden[j];
+                j--;
+            }
+            orden[j + 1] = x;
+        }
+
+        // Ubicar cada linea: centro, derecha, izquierda, derecha, izquierda...
+        for (int i = 0; i < orden.length; i++) {
+            int columna = (i == 0) ? 0 : (i % 2 == 1 ? (i + 1) / 2 : -(i / 2));
+            ListaEnlazada<Estacion> estaciones = ordenarLinea(orden[i]);
+            int desplazamiento = calcularDesplazamiento(estaciones);
+
+            int fila = desplazamiento;
+            boolean huboAisladas = false;
+            for (Nodo<Estacion> e = estaciones.getPrimero(); e != null; e = e.getSiguiente()) {
+                if (e.getDato().getGrado() == 0 && !huboAisladas) {
+                    fila++; // espacio para separar las estaciones aisladas
+                    huboAisladas = true;
+                }
+                posiciones.insertar(e.getDato().getId(),
+                        new double[]{columna * SEPARACION_COLUMNAS, fila * SEPARACION_FILAS});
+                if (columna < 0) {
+                    etiquetaIzquierda.insertar(e.getDato().getId(), Boolean.TRUE);
+                }
+                fila++;
+            }
+        }
+    }
+
+    /** Cuantas conexiones tiene la linea con estaciones de otras lineas. */
+    private int contarTransbordos(String linea) {
+        int cuenta = 0;
+        for (Nodo<Estacion> n = grafo.getEstaciones().getPrimero(); n != null; n = n.getSiguiente()) {
+            if (!nombreLinea(n.getDato()).equals(linea)) {
+                continue;
+            }
+            for (Nodo<Conexion> c = grafo.getVecinos(n.getDato().getId()).getPrimero(); c != null; c = c.getSiguiente()) {
+                if (!nombreLinea(c.getDato().getDestino()).equals(linea)) {
+                    cuenta++;
+                }
+            }
+        }
+        return cuenta;
+    }
+
+    /**
+     * Cuantas filas hay que bajar la columna para que su primer transbordo
+     * quede a la altura de la estacion (ya ubicada) con la que conecta.
+     */
+    private int calcularDesplazamiento(ListaEnlazada<Estacion> estaciones) {
+        int filaPropia = 0;
+        for (Nodo<Estacion> e = estaciones.getPrimero(); e != null; e = e.getSiguiente()) {
+            for (Nodo<Conexion> c = grafo.getVecinos(e.getDato().getId()).getPrimero(); c != null; c = c.getSiguiente()) {
+                double[] otra = posiciones.buscar(c.getDato().getDestino().getId());
+                if (otra != null) {
+                    int filaOtra = (int) Math.round(otra[1] / SEPARACION_FILAS);
+                    return filaOtra - filaPropia;
+                }
+            }
+            filaPropia++;
+        }
+        return 0;
+    }
+
+    private static String nombreLinea(Estacion e) {
+        return e.getLinea().isEmpty() ? "(sin linea)" : e.getLinea();
+    }
+
+    /**
+     * Ordena las estaciones de una linea recorriendo sus conexiones con
+     * estaciones de la misma linea. Empieza por una punta (estacion con un solo
+     * vecino de su linea); los ramales se agregan despues del tramo principal.
+     */
+    private ListaEnlazada<Estacion> ordenarLinea(String linea) {
+        ListaEnlazada<Estacion> deLaLinea = new ListaEnlazada<>();
+        for (Nodo<Estacion> n = grafo.getEstaciones().getPrimero(); n != null; n = n.getSiguiente()) {
+            if (nombreLinea(n.getDato()).equals(linea)) {
+                deLaLinea.agregar(n.getDato());
+            }
+        }
+
+        ListaEnlazada<Estacion> orden = new ListaEnlazada<>();
+        TablaHash<Boolean> usada = new TablaHash<>();
+        ListaEnlazada<Estacion> aisladas = new ListaEnlazada<>();
+
+        // Primero se recorre desde las puntas, luego desde cualquier estacion que falte
+        for (int pasada = 0; pasada < 2; pasada++) {
+            for (Nodo<Estacion> n = deLaLinea.getPrimero(); n != null; n = n.getSiguiente()) {
+                Estacion e = n.getDato();
+                if (usada.contiene(e.getId())) {
+                    continue;
+                }
+                if (e.getGrado() == 0) {
+                    aisladas.agregar(e);
+                    usada.insertar(e.getId(), Boolean.TRUE);
+                    continue;
+                }
+                if (pasada == 0 && vecinosDeLinea(e, linea) > 1) {
+                    continue; // en la primera pasada solo se empieza por las puntas
+                }
+                // Avanzar de vecino en vecino mientras haya uno sin usar de la misma linea
+                Estacion actual = e;
+                while (actual != null) {
+                    orden.agregar(actual);
+                    usada.insertar(actual.getId(), Boolean.TRUE);
+                    Estacion siguiente = null;
+                    for (Nodo<Conexion> c = grafo.getVecinos(actual.getId()).getPrimero(); c != null; c = c.getSiguiente()) {
+                        Estacion v = c.getDato().getDestino();
+                        if (nombreLinea(v).equals(linea) && !usada.contiene(v.getId())) {
+                            siguiente = v;
+                            break;
+                        }
+                    }
+                    actual = siguiente;
+                }
+            }
+        }
+        for (Nodo<Estacion> n = aisladas.getPrimero(); n != null; n = n.getSiguiente()) {
+            orden.agregar(n.getDato());
+        }
+        return orden;
+    }
+
+    /** Cuantos vecinos de la misma linea tiene una estacion. */
+    private int vecinosDeLinea(Estacion e, String linea) {
+        int cuenta = 0;
+        for (Nodo<Conexion> c = grafo.getVecinos(e.getId()).getPrimero(); c != null; c = c.getSiguiente()) {
+            if (nombreLinea(c.getDato().getDestino()).equals(linea)) {
+                cuenta++;
+            }
+        }
+        return cuenta;
     }
 
     /**
@@ -287,11 +394,12 @@ public class VisualizadorGrafo extends JPanel {
         }
         int w = getWidth() > 0 ? getWidth() : 900;
         int h = getHeight() > 0 ? getHeight() : 600;
-        double margen = 60;
-        double ew = (w - 2 * margen) / Math.max(1, maxX - minX);
-        double eh = (h - 2 * margen) / Math.max(1, maxY - minY);
-        escala = Math.max(0.2, Math.min(2.5, Math.min(ew, eh)));
-        despX = w / 2.0 - (minX + maxX) / 2 * escala;
+        // Margenes: a la derecha mas espacio porque ahi van los nombres
+        double izq = 160, der = 160, vertical = 40;
+        double ew = (w - izq - der) / Math.max(1, maxX - minX);
+        double eh = (h - 2 * vertical) / Math.max(1, maxY - minY);
+        escala = Math.max(0.05, Math.min(2.5, Math.min(ew, eh)));
+        despX = izq + (w - izq - der) / 2.0 - (minX + maxX) / 2 * escala;
         despY = h / 2.0 - (minY + maxY) / 2 * escala;
     }
 
@@ -408,10 +516,29 @@ public class VisualizadorGrafo extends JPanel {
             g.setStroke(new BasicStroke(enRuta ? 3f : 1.5f));
             g.setColor(enRuta ? Color.BLACK : Color.WHITE);
             g.draw(new Ellipse2D.Double(p[0] - r, p[1] - r, 2 * r, 2 * r));
-
-            g.setFont(enRuta || esHub ? fuenteNegrita : fuente);
+        }
+        // Nombres encima de todo, con un borde blanco para que se lean sobre las lineas
+        for (Nodo<Estacion> n = grafo.getEstaciones().getPrimero(); n != null; n = n.getSiguiente()) {
+            Estacion e = n.getDato();
+            double[] p = aPantalla(posiciones.buscar(e.getId()));
+            if (p == null) {
+                continue;
+            }
+            boolean resaltada = rutaResaltada.contiene(e) || hubsResaltados.contiene(e);
+            double r = hubsResaltados.contiene(e) ? RADIO * 1.6 : RADIO;
+            g.setFont(resaltada ? fuenteNegrita : fuente);
+            int ancho = g.getFontMetrics().stringWidth(e.getNombre());
+            int tx = etiquetaIzquierda.contiene(e.getId())
+                    ? (int) (p[0] - r - 5 - ancho) : (int) (p[0] + r + 5);
+            int ty = (int) (p[1] + 4);
+            g.setColor(Color.WHITE);
+            for (int ox = -1; ox <= 1; ox++) {
+                for (int oy = -1; oy <= 1; oy++) {
+                    g.drawString(e.getNombre(), tx + ox, ty + oy);
+                }
+            }
             g.setColor(new Color(0x33, 0x33, 0x33));
-            g.drawString(e.getNombre(), (float) (p[0] + r + 3), (float) (p[1] + 4));
+            g.drawString(e.getNombre(), tx, ty);
         }
     }
 
@@ -530,6 +657,7 @@ public class VisualizadorGrafo extends JPanel {
                         p[1] = (e.getY() - despY) / escala;
                     }
                 } else {
+                    vistaManual = true;
                     despX += e.getX() - ultimoX;
                     despY += e.getY() - ultimoY;
                 }
@@ -546,6 +674,7 @@ public class VisualizadorGrafo extends JPanel {
                 despX = e.getX() - (e.getX() - despX) * factor;
                 despY = e.getY() - (e.getY() - despY) * factor;
                 escala = nueva;
+                vistaManual = true;
                 repaint();
             }
 

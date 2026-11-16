@@ -101,7 +101,8 @@ public class VentanaPrincipal extends JFrame {
                 comboColor,
                 chkTiempos,
                 boton("Reorganizar dibujo", e -> visualizador.reorganizar()),
-                boton("Quitar resaltado", e -> visualizador.limpiarResaltado())));
+                boton("Quitar resaltado", e -> visualizador.limpiarResaltado()),
+                boton("Ajustar vista", e -> visualizador.ajustarVistaCompleta())));
         lateral.add(grupo("Ayuda", boton("Como usar", e -> mostrarAyuda())));
         lateral.add(Box.createVerticalGlue());
 
@@ -313,8 +314,8 @@ public class VentanaPrincipal extends JFrame {
                 error("El ID y el nombre son obligatorios.");
                 continue;
             }
-            if (id.contains(",") || nombre.contains(";")) {
-                error("El ID no puede tener comas y el nombre no puede tener punto y coma.");
+            if (id.contains(",") || id.contains(";") || id.contains("\"")) {
+                error("El ID no puede tener comas, punto y coma ni comillas.");
                 continue;
             }
             if (grafo.existeEstacion(id)) {
@@ -589,8 +590,18 @@ public class VentanaPrincipal extends JFrame {
             sb.append(String.format("%2d. %-35s %d conexiones%s%n", i + 1, hubs[i].toString(), hubs[i].getGrado(),
                     hubs[i].getLinea().isEmpty() ? "" : "   [" + hubs[i].getLinea() + "]"));
         }
-        if (hubs.length > n) {
-            sb.append("\n(Se muestran ").append(hubs.length).append(" porque hay empate en el ultimo lugar.)");
+        // Avisar si otras estaciones tienen el mismo numero de conexiones que la ultima mostrada
+        int gradoUltimo = hubs[hubs.length - 1].getGrado();
+        int mostradasConEseGrado = 0;
+        for (Estacion h : hubs) {
+            if (h.getGrado() == gradoUltimo) {
+                mostradasConEseGrado++;
+            }
+        }
+        int sinMostrar = analizador.contarConGrado(gradoUltimo) - mostradasConEseGrado;
+        if (sinMostrar > 0) {
+            sb.append("\nHay ").append(sinMostrar).append(" estacion(es) mas con ").append(gradoUltimo)
+              .append(" conexiones que no se muestran.");
         }
         mostrar(sb.toString());
         visualizador.resaltarHubs(hubs);
@@ -608,7 +619,8 @@ public class VentanaPrincipal extends JFrame {
                 + "4. Detectar subredes: lista las partes de la red que no estan conectadas entre si.\n"
                 + "5. Identificar hubs: estaciones con mas conexiones (se resaltan en el dibujo).\n\n"
                 + "En el dibujo: arrastre una estacion para moverla, arrastre el fondo para desplazar,\n"
-                + "use la rueda del raton para hacer zoom y pase el raton sobre una estacion para ver sus datos.";
+                + "use Ctrl + rueda del raton para hacer zoom y \"Ajustar vista\" para volver a encuadrar la red.\n"
+                + "Pase el raton sobre una estacion para ver sus datos.";
         mostrar(ayuda);
     }
 

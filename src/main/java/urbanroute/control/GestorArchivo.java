@@ -221,7 +221,7 @@ public class GestorArchivo {
                 Estacion destino = c.getDato().getDestino();
                 if (!yaEscritas.contiene(destino)) {
                     gra.append(csv(e.getId())).append(',').append(csv(destino.getId())).append(',')
-                       .append(CalculadorRutas.formatear(c.getDato().getTiempo()).replace(",", ".")).append('\n');
+                       .append(tiempoATexto(c.getDato().getTiempo())).append('\n');
                 }
             }
             yaEscritas.agregar(e);
@@ -339,8 +339,17 @@ public class GestorArchivo {
         return (i >= 0 && i < c.length) ? c[i].trim() : "";
     }
 
+    /**
+     * Escribe el tiempo sin perder decimales: 2.0 -> "2", 2.25 -> "2.25".
+     * BigDecimal evita el redondeo y la notacion cientifica.
+     */
+    private String tiempoATexto(double tiempo) {
+        return new java.math.BigDecimal(Double.toString(tiempo)).stripTrailingZeros().toPlainString();
+    }
+
+    /** Entrecomilla el campo si tiene coma, punto y coma o comillas. */
     private String csv(String s) {
-        if (s.indexOf(',') >= 0 || s.indexOf('"') >= 0) {
+        if (s.indexOf(',') >= 0 || s.indexOf(';') >= 0 || s.indexOf('"') >= 0) {
             return "\"" + s.replace("\"", "\"\"") + "\"";
         }
         return s;

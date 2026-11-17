@@ -84,8 +84,9 @@ public class AnalizadorRed {
 
     /**
      * Hubs de transferencia: las estaciones con mas conexiones, de mayor a menor.
-     * Devuelve las primeras {@code cantidad}; si hay empate en el ultimo lugar
-     * se incluyen todas las empatadas. Las estaciones sin conexiones no cuentan.
+     * Devuelve exactamente las primeras {@code cantidad} (si hay empate en el
+     * numero de conexiones, se ordenan por nombre). Las estaciones sin
+     * conexiones no cuentan.
      */
     public Estacion[] identificarHubs(int cantidad) {
         Estacion[] todas = ordenarPorGrado();
@@ -93,10 +94,6 @@ public class AnalizadorRed {
             return new Estacion[0];
         }
         int limite = Math.min(cantidad, todas.length);
-        int gradoCorte = todas[limite - 1].getGrado();
-        while (limite < todas.length && todas[limite].getGrado() == gradoCorte) {
-            limite++; // incluir empates
-        }
         // Quitar estaciones sin conexiones
         while (limite > 0 && todas[limite - 1].getGrado() == 0) {
             limite--;
@@ -104,6 +101,17 @@ public class AnalizadorRed {
         Estacion[] hubs = new Estacion[limite];
         System.arraycopy(todas, 0, hubs, 0, limite);
         return hubs;
+    }
+
+    /** Cuantas estaciones tienen exactamente ese numero de conexiones. */
+    public int contarConGrado(int grado) {
+        int cuenta = 0;
+        for (Nodo<Estacion> n = grafo.getEstaciones().getPrimero(); n != null; n = n.getSiguiente()) {
+            if (n.getDato().getGrado() == grado) {
+                cuenta++;
+            }
+        }
+        return cuenta;
     }
 
     /** Estaciones ordenadas por grado descendente (insercion; empate por nombre). */
